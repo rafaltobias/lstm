@@ -36,15 +36,15 @@ def prepare_lstm_data(data, feature_column='Close', look_back=60):
 def build_model(hp):
     model = Sequential()
     look_back = 60
-    model.add(LSTM(units=hp.Int('units_1', min_value=32, max_value=128, step=32), 
+    model.add(LSTM(units=hp.Int('units_1', min_value=64, max_value=256, step=64), 
                    return_sequences=True, input_shape=(look_back, 1)))
-    model.add(Dropout(hp.Float('dropout_1', 0.1, 0.5, step=0.1)))
-    model.add(LSTM(units=hp.Int('units_2', min_value=32, max_value=128, step=32), return_sequences=False))
-    model.add(Dropout(hp.Float('dropout_2', 0.1, 0.5, step=0.1)))
-    model.add(Dense(units=hp.Int('dense_units', min_value=16, max_value=64, step=16)))
+    model.add(Dropout(hp.Float('dropout_1', 0.2, 0.5, step=0.1)))
+    model.add(LSTM(units=hp.Int('units_2', min_value=64, max_value=256, step=64), return_sequences=False))
+    model.add(Dropout(hp.Float('dropout_2', 0.2, 0.5, step=0.1)))
+    model.add(Dense(units=hp.Int('dense_units', min_value=32, max_value=128, step=32)))
     model.add(Dense(units=1))
-    
-    model.compile(optimizer=Adam(learning_rate=hp.Float('lr', 1e-4, 1e-2, sampling='log')),
+
+    model.compile(optimizer=Adam(learning_rate=hp.Float('lr', 1e-4, 1e-3, sampling='log')),
                   loss='mean_squared_error')
     return model
 
@@ -72,7 +72,7 @@ class LSTMStockPredictor:
         self.best_hps = self.tuner.get_best_hyperparameters(num_trials=1)[0]
         print("Najlepsze hiperparametry:", self.best_hps.values)
 
-    def train(self, X, y, epochs=25, batch_size=32, n_splits=5, patience=5):
+    def train(self, X, y, epochs=50, batch_size=64, n_splits=5, patience=10):
         if self.best_hps:
             self.model = Sequential([
                 LSTM(units=self.best_hps.get('units_1'), return_sequences=True, input_shape=(self.look_back, 1)),
@@ -85,11 +85,11 @@ class LSTMStockPredictor:
             self.model.compile(optimizer=Adam(learning_rate=self.best_hps.get('lr')), loss='mean_squared_error')
         else:
             self.model = Sequential([
-                LSTM(units=50, return_sequences=True, input_shape=(self.look_back, 1)),
-                Dropout(0.2),
-                LSTM(units=50, return_sequences=False),
-                Dropout(0.2),
-                Dense(units=25),
+                LSTM(units=128, return_sequences=True, input_shape=(self.look_back, 1)),
+                Dropout(0.3),
+                LSTM(units=128, return_sequences=False),
+                Dropout(0.3),
+                Dense(units=64),
                 Dense(units=1)
             ])
             self.model.compile(optimizer='adam', loss='mean_squared_error')
@@ -187,10 +187,10 @@ def main():
     lstm_predictor.scaler = scaler
     
     print("Rozpoczynanie hipertuningu...")
-    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=10)
+    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=25)
 
     print("Trenowanie modelu z najlepszymi hiperparametrami i walidacją krzyżową...")
-    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=10)
+    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=25)
     lstm_predictor.plot_loss(histories)
 
     print("Przewidywanie na danych testowych...")
