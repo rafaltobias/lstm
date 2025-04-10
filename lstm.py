@@ -12,17 +12,14 @@ from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from keras_tuner import RandomSearch
 
-# Funkcja do pobierania danych giełdowych
 def fetch_stock_data(ticker, start_date, end_date):
     data = yf.download(ticker, start=start_date, end=end_date)
     return data
 
-# Funkcja do zapisu danych do pliku CSV
 def save_data_to_csv(data, file_name):
     data.to_csv(file_name, index=False)
     print(f"Dane zostały zapisane do pliku: {file_name}")
 
-# Funkcja do przygotowania danych dla modelu LSTM
 def prepare_lstm_data(data, feature_column='Close', look_back=60):
     data = data[[feature_column]].values
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -36,10 +33,9 @@ def prepare_lstm_data(data, feature_column='Close', look_back=60):
     X, y = np.array(X), np.array(y)
     return X, y, scaler, scaled_data
 
-# Funkcja budująca model dla hipertuningu
 def build_model(hp):
     model = Sequential()
-    look_back = 60  # Stały look_back
+    look_back = 60
     model.add(LSTM(units=hp.Int('units_1', min_value=32, max_value=128, step=32), 
                    return_sequences=True, input_shape=(look_back, 1)))
     model.add(Dropout(hp.Float('dropout_1', 0.1, 0.5, step=0.1)))
@@ -52,14 +48,13 @@ def build_model(hp):
                   loss='mean_squared_error')
     return model
 
-# Klasa do budowy i trenowania modelu LSTM
 class LSTMStockPredictor:
     def __init__(self):
         self.model = None
         self.tuner = None
-        self.look_back = 60  # Stały look_back
+        self.look_back = 60 
         self.scaler = None
-        self.best_hps = None  # Przechowujemy najlepsze hiperparametry
+        self.best_hps = None  
 
     def hypertune(self, X_train, y_train, max_trials=25, executions_per_trial=1):
         X_train = np.reshape(X_train, (X_train.shape[0], self.look_back, 1))
@@ -71,15 +66,13 @@ class LSTMStockPredictor:
             directory='hyperparam_tuning',
             project_name='stock_prediction'
         )
-        self.tuner.search(X_train, y_train, epochs=25, validation_split=0.2,
+        self.tuner.search(X_train, y_train, epochs=50, validation_split=0.2,
                           callbacks=[EarlyStopping(monitor='val_loss', patience=5)])
         
-        # Zapisujemy najlepsze hiperparametry zamiast ładować model
         self.best_hps = self.tuner.get_best_hyperparameters(num_trials=1)[0]
         print("Najlepsze hiperparametry:", self.best_hps.values)
 
     def train(self, X, y, epochs=25, batch_size=32, n_splits=5, patience=5):
-        # Budujemy model na podstawie najlepszych hiperparametrów, jeśli istnieją
         if self.best_hps:
             self.model = Sequential([
                 LSTM(units=self.best_hps.get('units_1'), return_sequences=True, input_shape=(self.look_back, 1)),
@@ -91,7 +84,6 @@ class LSTMStockPredictor:
             ])
             self.model.compile(optimizer=Adam(learning_rate=self.best_hps.get('lr')), loss='mean_squared_error')
         else:
-            # Domyślny model, jeśli hipertuning nie został wykonany
             self.model = Sequential([
                 LSTM(units=50, return_sequences=True, input_shape=(self.look_back, 1)),
                 Dropout(0.2),
@@ -154,7 +146,6 @@ class LSTMStockPredictor:
         plt.grid()
         plt.show()
 
-# Pozostałe funkcje bez zmian
 def plot_predictions(real, predicted, title="Porównanie rzeczywistych cen i przewidywań"):
     plt.figure(figsize=(14, 7))
     plt.plot(real, color='blue', label='Rzeczywiste ceny')
@@ -199,7 +190,7 @@ def main():
     lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=10)
 
     print("Trenowanie modelu z najlepszymi hiperparametrami i walidacją krzyżową...")
-    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=5)
+    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=10)
     lstm_predictor.plot_loss(histories)
 
     print("Przewidywanie na danych testowych...")
