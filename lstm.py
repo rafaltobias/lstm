@@ -165,6 +165,11 @@ def calculate_metrics(real, predicted):
     print(f"Mean Squared Error (MSE): {mse:.2f}")
     print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
     return mae, mse, rmse
+    rmse = np.sqrt(mse)
+    print(f"Mean Absolute Error (MAE): {mae:.2f}")
+    print(f"Mean Squared Error (MSE): {mse:.2f}")
+    print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
+    return mae, mse, rmse
 
 def main():
     ticker = "AAPL"
