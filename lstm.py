@@ -178,7 +178,7 @@ def calculate_accuracy(real, predicted, threshold=0.05):
     
     within_threshold = np.mean(np.abs((real - predicted) / real) <= threshold) * 100
     
-    print(f"Średnia dokładność procentowa: {accuracy:.2f}%")
+    print(f"Średnia dokładność: {accuracy:.2f}%")
     print(f"Przewidywania w marginesie {threshold*100}%: {within_threshold:.2f}%")
     return accuracy, within_threshold
 
