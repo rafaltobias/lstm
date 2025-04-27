@@ -164,12 +164,23 @@ def calculate_metrics(real, predicted):
     print(f"Mean Absolute Error (MAE): {mae:.2f}")
     print(f"Mean Squared Error (MSE): {mse:.2f}")
     print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
-    return mae, mse, rmse
-    rmse = np.sqrt(mse)
-    print(f"Mean Absolute Error (MAE): {mae:.2f}")
-    print(f"Mean Squared Error (MSE): {mse:.2f}")
-    print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
-    return mae, mse, rmse
+    
+    accuracy, threshold_accuracy = calculate_accuracy(real, predicted)
+    return mae, mse, rmse, accuracy, threshold_accuracy
+
+def calculate_accuracy(real, predicted, threshold=0.05):
+    """
+    Oblicza dokładność procentową przewidywań
+    threshold: dopuszczalny margines błędu (5% domyślnie)
+    """
+    mape = np.mean(np.abs((real - predicted) / real)) * 100
+    accuracy = 100 - mape
+    
+    within_threshold = np.mean(np.abs((real - predicted) / real) <= threshold) * 100
+    
+    print(f"Średnia dokładność procentowa: {accuracy:.2f}%")
+    print(f"Przewidywania w marginesie {threshold*100}%: {within_threshold:.2f}%")
+    return accuracy, within_threshold
 
 def main():
     ticker = "AAPL"
@@ -192,10 +203,10 @@ def main():
     lstm_predictor.scaler = scaler
     
     print("Rozpoczynanie hipertuningu...")
-    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=25)
+    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=2)
 
     print("Trenowanie modelu z najlepszymi hiperparametrami i walidacją krzyżową...")
-    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=25)
+    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=10)
     lstm_predictor.plot_loss(histories)
 
     print("Przewidywanie na danych testowych...")
@@ -207,26 +218,12 @@ def main():
     plot_predictions(real_prices, predictions.flatten(), title="Rzeczywiste ceny vs Przewidywania")
 
     print("Obliczanie skuteczności modelu na zbiorze testowym...")
-    mae, mse, rmse = calculate_metrics(real_prices, predictions.flatten())
-
-    print("Przewidywanie ceny na następne 7 dni...")
-    last_sequence = scaled_data[-lstm_predictor.look_back:].copy()
-
-    predicted_prices = []
-    for _ in range(7):
-        current_sequence = np.reshape(last_sequence, (1, lstm_predictor.look_back, 1))
-        next_day_prediction = lstm_predictor.predict(current_sequence)
-        next_day_prediction = lstm_predictor.scaler.inverse_transform(next_day_prediction)
-        predicted_prices.append(next_day_prediction[0][0])
-        last_sequence = np.append(last_sequence[1:], lstm_predictor.scaler.transform(next_day_prediction)[0])
-
-    for i, price in enumerate(predicted_prices):
-        prediction_date = datetime.now() + timedelta(days=i + 1)
-        print(f"Przewidywana cena na {prediction_date.strftime('%Y-%m-%d')}: {price:.2f} USD")
-
+    mae, mse, rmse, accuracy, threshold_accuracy = calculate_metrics(real_prices, predictions.flatten())
+    
     results = pd.DataFrame({
         "Real": real_prices,
-        "Predicted": predictions.flatten()
+        "Predicted": predictions.flatten(),
+        "Accuracy": np.abs((real_prices - predictions.flatten()) / real_prices) * 100
     })
     results.to_csv(f"{ticker}_predictions.csv", index=False)
     print(f"Wyniki przewidywań zapisano do pliku: {ticker}_predictions.csv")
