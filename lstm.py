@@ -1,6 +1,7 @@
 import numpy as np
 import yfinance as yf
 import pandas as pd
+import time  # dodany import
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
@@ -100,8 +101,10 @@ class LSTMStockPredictor:
 
         X = np.reshape(X, (X.shape[0], self.look_back, 1))
 
+        total_start_time = time.time()
         for fold, (train_index, val_index) in enumerate(tscv.split(X)):
-            print(f"Trenowanie fold {fold + 1}/{n_splits}...")
+            fold_start_time = time.time()
+            print(f"\nRozpoczęcie foldu {fold + 1}/{n_splits}...")
             X_train_fold, X_val_fold = X[train_index], X[val_index]
             y_train_fold, y_val_fold = y[train_index], y[val_index]
 
@@ -121,12 +124,16 @@ class LSTMStockPredictor:
             mse = mean_squared_error(y_val_fold, val_predictions)
             rmse = np.sqrt(mse)
             fold_metrics.append((mae, mse, rmse))
+            
+            fold_end_time = time.time()
+            fold_duration = fold_end_time - fold_start_time
             print(f"Fold {fold + 1} - MAE: {mae:.4f}, MSE: {mse:.4f}, RMSE: {rmse:.4f}")
+            print(f"Czas trenowania foldu {fold + 1}: {fold_duration:.2f} sekund")
 
-        avg_mae = np.mean([m[0] for m in fold_metrics])
-        avg_mse = np.mean([m[1] for m in fold_metrics])
-        avg_rmse = np.mean([m[2] for m in fold_metrics])
-        print(f"Średnie wyniki walidacji krzyżowej: MAE: {avg_mae:.4f}, MSE: {avg_mse:.4f}, RMSE: {avg_rmse:.4f}")
+        total_end_time = time.time()
+        total_duration = total_end_time - total_start_time
+        print(f"\nCałkowity czas trenowania: {total_duration:.2f} sekund")
+        print(f"Średni czas na fold: {total_duration/n_splits:.2f} sekund")
 
         return histories
 
@@ -145,6 +152,23 @@ class LSTMStockPredictor:
         plt.legend()
         plt.grid()
         plt.show()
+
+    def predict_next_day(self, data, feature_column='Close'):
+        """
+        Predicts the next day's stock price using the last look_back days of data
+        """
+        last_data = data[feature_column].values[-self.look_back:]
+        last_data = last_data.reshape(-1, 1)
+        
+        scaled_data = self.scaler.transform(last_data)
+        
+        X = np.reshape(scaled_data, (1, self.look_back, 1))
+        
+        prediction = self.model.predict(X)
+        
+        next_day_price = self.scaler.inverse_transform(prediction)[0][0]
+        
+        return next_day_price
 
 def plot_predictions(real, predicted, title="Porównanie rzeczywistych cen i przewidywań"):
     plt.figure(figsize=(14, 7))
@@ -203,10 +227,10 @@ def main():
     lstm_predictor.scaler = scaler
     
     print("Rozpoczynanie hipertuningu...")
-    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=2)
+    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=10)
 
     print("Trenowanie modelu z najlepszymi hiperparametrami i walidacją krzyżową...")
-    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=10)
+    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=50)
     lstm_predictor.plot_loss(histories)
 
     print("Przewidywanie na danych testowych...")
@@ -227,6 +251,12 @@ def main():
     })
     results.to_csv(f"{ticker}_predictions.csv", index=False)
     print(f"Wyniki przewidywań zapisano do pliku: {ticker}_predictions.csv")
+
+    next_day_prediction = lstm_predictor.predict_next_day(stock_data)
+    last_price = float(stock_data['Close'].iloc[-1])
+    print(f"\nPrzewidywana cena akcji {ticker} na następny dzień: ${next_day_prediction:.2f}")
+    print(f"Ostatnia znana cena: ${last_price:.2f}")
+    print(f"Różnica: ${(next_day_prediction - last_price):.2f} ({((next_day_prediction/last_price)-1)*100:.2f}%)")
 
 if __name__ == "__main__":
     main()
