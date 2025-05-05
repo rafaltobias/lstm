@@ -1,7 +1,7 @@
 import numpy as np
 import yfinance as yf
 import pandas as pd
-import time  # dodany import
+import time  
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
@@ -50,6 +50,7 @@ def build_model(hp):
     return model
 
 class LSTMStockPredictor:
+    
     def __init__(self):
         self.model = None
         self.tuner = None
@@ -227,10 +228,10 @@ def main():
     lstm_predictor.scaler = scaler
     
     print("Rozpoczynanie hipertuningu...")
-    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=10)
+    lstm_predictor.hypertune(X_train_full, y_train_full, max_trials=30)
 
     print("Trenowanie modelu z najlepszymi hiperparametrami i walidacją krzyżową...")
-    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=50)
+    histories = lstm_predictor.train(X_train_full, y_train_full, epochs=50, batch_size=64, n_splits=100)
     lstm_predictor.plot_loss(histories)
 
     print("Przewidywanie na danych testowych...")
