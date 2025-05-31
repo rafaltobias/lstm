@@ -3,3 +3,10 @@ AAPL_stock_data.csv
 AAPL_predictions.csv
 AAPL_predictions.csv
 AAPL_metrics_summary.csv
+AAPL_data_metadata.csv
+AAPL_predictions.csv
+AAPL_X_test.csv
+
+AAPL_X_train.csv
+AAPL_y_test.csv
+AAPL_y_train.csv

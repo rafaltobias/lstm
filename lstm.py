@@ -1,6 +1,21 @@
+"""
+LSTM Stock Price Prediction with Multiple Data Sources
+
+Wymagane biblioteki:
+pip install numpy pandas yfinance pandas-datareader scikit-learn tensorflow keras-tuner matplotlib psutil
+
+Źródła danych (w kolejności prób):
+1. Yahoo Finance (yfinance) - główne źródło
+2. IEX (Investors Exchange) - alternatywa dla akcji amerykańskich
+3. FRED (Federal Reserve Economic Data) - dla głównych indeksów
+4. Stooq - globalne dane giełdowe
+5. Yahoo Finance przez pandas_datareader - zapasowa opcja
+"""
+
 import numpy as np
 import yfinance as yf
 import pandas as pd
+import pandas_datareader as pdr
 import time  
 import psutil
 import os
@@ -17,24 +32,22 @@ from keras_tuner import RandomSearch
 
 def fetch_stock_data(ticker, start_date, end_date, max_retries=3, delay=5):
     """
-    Pobiera dane giełdowe z obsługą błędów rate limiting
-    """
-    import time
+    Pobiera dane giełdowe z obsługą błędów rate limiting i alternatywnymi źródłami danych
+    """    
     
     for attempt in range(max_retries):
         try:
-            print(f"Próba {attempt + 1}/{max_retries} pobrania danych dla {ticker}...")
+            print(f"Próba {attempt + 1}/{max_retries} pobrania danych dla {ticker} z Yahoo Finance...")
             data = yf.download(ticker, start=start_date, end=end_date, progress=False)
             
-            if data.empty:
-                print(f"UWAGA: Nie pobrano żadnych danych dla {ticker}")
-                return None
-            
-            print(f"Pomyślnie pobrano {len(data)} rekordów dla {ticker}")
-            return data
-            
+            if not data.empty:
+                print(f"Pomyślnie pobrano {len(data)} rekordów dla {ticker} z Yahoo Finance")
+                return data
+            else:
+                print(f"UWAGA: Nie pobrano żadnych danych dla {ticker} z Yahoo Finance")
+                
         except Exception as e:
-            print(f"Błąd podczas pobierania danych (próba {attempt + 1}): {e}")
+            print(f"Błąd podczas pobierania danych z Yahoo Finance (próba {attempt + 1}): {e}")
             
             if "Rate limited" in str(e) or "Too Many Requests" in str(e):
                 if attempt < max_retries - 1:
@@ -42,12 +55,84 @@ def fetch_stock_data(ticker, start_date, end_date, max_retries=3, delay=5):
                     print(f"Rate limit detected. Czekanie {wait_time} sekund...")
                     time.sleep(wait_time)
                 else:
-                    print("Maksymalna liczba prób osiągnięta. Sprawdź czy masz lokalny plik z danymi.")
-                    return None
+                    print("Maksymalna liczba prób Yahoo Finance osiągnięta.")
             else:
-                print(f"Nieoczekiwany błąd: {e}")
-                return None
+                print(f"Nieoczekiwany błąd Yahoo Finance: {e}")                
+                break
     
+    print(f"\nPróbuję alternatywne źródła danych dla {ticker}...")
+    
+    try:
+        print(f"Próba pobrania danych dla {ticker} z IEX...")        
+        data = pdr.get_data_iex(ticker, start=start_date, end=end_date)
+        if not data.empty:
+            if 'close' in data.columns:
+                data = data.rename(columns={
+                    'open': 'Open', 
+                    'high': 'High', 
+                    'low': 'Low', 
+                    'close': 'Close', 
+                    'volume': 'Volume'
+                })
+            print(f"Pomyślnie pobrano {len(data)} rekordów dla {ticker} z IEX")
+            return data
+    except Exception as e:        
+        print(f"Błąd podczas pobierania danych z IEX: {e}")
+    
+    try:        
+        print(f"Próba pobrania danych dla {ticker} z FRED...")
+        fred_symbols = {            
+            'SPY': 'SP500',
+            'QQQ': 'NASDAQCOM',
+            'DIA': 'DJIA',
+            'AAPL': None,
+            'MSFT': None,
+            'GOOGL': None,
+            'TSLA': None
+        }
+        
+        fred_symbol = fred_symbols.get(ticker.upper())
+        if fred_symbol:            
+            data = pdr.get_data_fred(fred_symbol, start=start_date, end=end_date)
+            if not data.empty:
+                data = pd.DataFrame({
+                    'Open': data.iloc[:, 0],                    
+                    'High': data.iloc[:, 0], 
+                    'Low': data.iloc[:, 0],
+                    'Close': data.iloc[:, 0],
+                    'Volume': 0
+                })
+                print(f"Pomyślnie pobrano {len(data)} rekordów dla {ticker} z FRED")
+                return data
+        else:
+            print(f"Symbol {ticker} nie jest dostępny w FRED")
+    except Exception as e:        print(f"Błąd podczas pobierania danych z FRED: {e}")
+    
+    try:
+        print(f"Próba pobrania danych dla {ticker} z Stooq...")        
+        data = pdr.get_data_stooq(ticker, start=start_date, end=end_date)
+        if not data.empty:
+            data = data.sort_index()
+            print(f"Pomyślnie pobrano {len(data)} rekordów dla {ticker} z Stooq")
+            return data
+    except Exception as e:        
+        print(f"Błąd podczas pobierania danych z Stooq: {e}")
+    
+    try:
+        print(f"Próba pobrania danych dla {ticker} z Yahoo przez pandas_datareader...")
+        data = pdr.get_data_yahoo(ticker, start=start_date, end=end_date)
+        if not data.empty:
+            print(f"Pomyślnie pobrano {len(data)} rekordów dla {ticker} z Yahoo przez pandas_datareader")
+            return data
+    except Exception as e:
+            print(f"Błąd podczas pobierania danych z Yahoo przez pandas_datareader: {e}")
+    print("BŁĄD: Wszystkie źródła danych zawiodły. Sprawdź połączenie internetowe lub spróbuj z innym tickerem.")
+    print("Dostępne alternatywne źródła zostały wyczerpane:")
+    print("- Yahoo Finance (yfinance)")
+    print("- IEX (Investors Exchange)")
+    print("- FRED (Federal Reserve Economic Data)")
+    print("- Stooq")
+    print("- Yahoo Finance (pandas_datareader)")
     return None
 
 def save_data_to_csv(data, file_name):
@@ -91,7 +176,7 @@ class LSTMStockPredictor:
         self.scaler = None
         self.best_hps = None  
 
-    def hypertune(self, X_train, y_train, max_trials=25, executions_per_trial=1):
+    def hypertune(self, X_train, y_train, max_trials=2, executions_per_trial=1):
         X_train = np.reshape(X_train, (X_train.shape[0], self.look_back, 1))
         self.tuner = RandomSearch(
             build_model,
@@ -351,9 +436,9 @@ def calculate_accuracy(real, predicted, threshold=0.05):
 def export_training_data_to_csv(X_train, y_train, X_test, y_test, ticker):
     """
     Eksportuje dane treningowe i testowe do plików CSV
-    X_train, X_test: 3D arrays (samples, timesteps, features) 
+    X_train, X_test: 2D arrays (samples, timesteps) - will be reshaped for LSTM later
     y_train, y_test: 1D arrays
-    """
+    """    
     print("\n=== EKSPORTOWANIE DANYCH TRENINGOWYCH I TESTOWYCH ===")
     
     y_train_df = pd.DataFrame({
@@ -367,18 +452,26 @@ def export_training_data_to_csv(X_train, y_train, X_test, y_test, ticker):
         'y_test': y_test
     })
     y_test_file = f"{ticker}_y_test.csv"
-    y_test_df.to_csv(y_test_file, index=False)
+    y_test_df.to_csv(y_test_file, index=False)    
     print(f"Dane testowe Y zapisano do: {y_test_file} ({len(y_test)} próbek)")
+    if len(X_train.shape) == 2:
+        X_train_2d = X_train
+        features_per_timestep = 1
+    else:
+        X_train_2d = X_train.reshape(X_train.shape[0], -1)
+        features_per_timestep = X_train.shape[2]
     
-
-    X_train_2d = X_train.reshape(X_train.shape[0], -1)
     X_train_columns = [f'timestep_{i}' for i in range(X_train_2d.shape[1])]
     X_train_df = pd.DataFrame(X_train_2d, columns=X_train_columns)
     X_train_file = f"{ticker}_X_train.csv"
-    X_train_df.to_csv(X_train_file, index=False)
+    X_train_df.to_csv(X_train_file, index=False)    
     print(f"Dane treningowe X zapisano do: {X_train_file} ({X_train.shape[0]} próbek, {X_train.shape[1]} timesteps)")
     
-    X_test_2d = X_test.reshape(X_test.shape[0], -1)
+    if len(X_test.shape) == 2:
+        X_test_2d = X_test
+    else:
+        X_test_2d = X_test.reshape(X_test.shape[0], -1)
+    
     X_test_columns = [f'timestep_{i}' for i in range(X_test_2d.shape[1])]
     X_test_df = pd.DataFrame(X_test_2d, columns=X_test_columns)
     X_test_file = f"{ticker}_X_test.csv"
@@ -391,7 +484,7 @@ def export_training_data_to_csv(X_train, y_train, X_test, y_test, ticker):
         'y_train_samples': len(y_train),
         'y_test_samples': len(y_test),
         'look_back_window': X_train.shape[1],
-        'features_per_timestep': X_train.shape[2],
+        'features_per_timestep': features_per_timestep,
         'export_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     
