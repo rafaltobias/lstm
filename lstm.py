@@ -1,7 +1,5 @@
 """
-LSTM Stock Price Prediction with Multiple Data Sources
-
-Wymagane biblioteki:
+biblioteki:
 pip install numpy pandas yfinance pandas-datareader scikit-learn tensorflow keras-tuner matplotlib psutil
 
 Źródła danych (w kolejności prób):
